@@ -106,7 +106,7 @@ def train(train_loader, model, criterion_d, optimizer, device, epoch, args):
     depth_loss = logging.AverageMeter()
     half_epoch = args.epochs // 2
 
-    batches_in_epoch = 2019*3 #for kitti dataset defaut batches = 12, but current setting batch_size = 4 (01 RTX3060)
+    batches_in_epoch = 2019*4 #for kitti dataset defaut batches = 12, but current setting batch_size = 3 (01 RTX3060)
 
     for batch_idx, batch in enumerate(train_loader):      
         global_step += 1

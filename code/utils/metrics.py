@@ -70,4 +70,3 @@ def cropping_img(args, pred, gt_depth):
     valid_mask = torch.logical_and(valid_mask, eval_mask)
 
     return pred[valid_mask], gt_depth[valid_mask]
-

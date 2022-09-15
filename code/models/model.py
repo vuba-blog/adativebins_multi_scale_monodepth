@@ -30,16 +30,23 @@ class GLPDepth(nn.Module):
 
         # self.conv3x3 = nn.Conv2d(in_channels, embedding_dim, kernel_size=3, stride=1, padding=1)
 
-        self.ada_bins_4 = adaptive_bins(embedding_dim=512, dim_out=256, n_query_channels = 128, norm = 'linear')
+        self.ada_bins_4 = adaptive_bins_b_only(embedding_dim=512, dim_out=256, norm = 'linear')
 
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv_out = nn.Sequential(nn.Conv2d(128, 256, kernel_size=1, stride=1, padding=0),
+
+        #convert C with softmax by DIM=1
+        self.conv_out = nn.Sequential(nn.Conv2d(64, 256, kernel_size=1, stride=1, padding=0),
                                       nn.Softmax(dim=1))
                                       
-        self.last_layer_depth = nn.Sequential(
-            nn.Conv2d(channels_out, channels_out, kernel_size=3, stride=1, padding=1),
+        # self.last_layer_depth = nn.Sequential(
+        #     nn.Conv2d(channels_out, channels_out, kernel_size=3, stride=1, padding=1),
+        #     nn.ReLU(inplace=False),
+        #     nn.Conv2d(channels_out, 1, kernel_size=3, stride=1, padding=1))
+
+        self.last_layer_depth_mod = nn.Sequential(
+            nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=False),
-            nn.Conv2d(channels_out, 1, kernel_size=3, stride=1, padding=1))
+            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1))
 
     def forward(self, x):      
         convs, embeds = self.encoder(x)
@@ -47,11 +54,11 @@ class GLPDepth(nn.Module):
 
         out = self.decoder(conv1, conv2, conv3, conv4)
 
-        b4, range_attention_maps_4 = self.ada_bins_4(out ,embeds[3]) #param 1: the tensor to calculate R, param 2: to calculate b
+        b4 = self.ada_bins_4(embeds[3]) #param 1: the tensor to calculate R, param 2: to calculate b
         # b4: (N, dim_out)
         # range_attention_maps_4: (N, n_query_channels, H/4, W/4)
 
-        out = self.conv_out(range_attention_maps_4) #convert the channel (n_query_channels) to the number of embedding bins: dim_out
+        # out = self.conv_out(range_attention_maps_4) #convert the channel (n_query_channels) to the number of embedding bins: dim_out
 
         bin_widths = (self.max_depth - self.min_depth) * b4  # .shape = N, dim_out
         bin_widths = nn.functional.pad(bin_widths, (1, 0), mode='constant', value=self.min_depth)
@@ -59,7 +66,15 @@ class GLPDepth(nn.Module):
         centers = 0.5 * (bin_edges[:, :-1] + bin_edges[:, 1:])
         n, dout = centers.size()
         centers = centers.view(n, dout, 1, 1)
+        
+        # print("Centers: ", centers)
+
+        #arch_03 change C
+        out = self.conv_out(out)
+
         out_depth = torch.sum(out * centers, dim=1, keepdim=True)
+
+        out_depth = self.last_layer_depth_mod(out)
 
         # print(out_depth)
         # out_depth = self.last_layer_depth(out)
@@ -88,6 +103,54 @@ class PixelWiseDotProduct(nn.Module):
         return y.permute(0, 2, 1).view(n, cout, h, w)
 
 
+class adaptive_bins_b_only(nn.Module):
+    def __init__(self, embedding_dim=512, dim_out=256, norm = 'linear'):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.dim_out = dim_out
+        self.norm = norm
+
+        # conv_3x3 to match the key volume X channels with the query K calculated
+        # self.conv_3x3 = nn.Conv2d(self.in_channels, self.embedding_dim, kernel_size=3, stride=1, padding=1)
+
+        #transform the b vector with the embedding_bim to dim_out = N_bins (number of devided bins of depth)
+        self.regressor = nn.Sequential(nn.Linear(self.embedding_dim, 256),
+                                       nn.LeakyReLU(),
+                                       nn.Linear(256, 256),
+                                       nn.LeakyReLU(),
+                                       nn.Linear(256, self.dim_out))
+
+    def forward(self, y):
+        """_summary_
+        Args:
+            x (tensor N C H W ): the block is multiplied with R vector later for calculating the range-attention-map
+            y (tensor N S E): the ANY sequence of patches, for calculating b and R
+        Returns:
+            tensor: N nbins
+            tensor: range-attention-map
+        """
+        #x: N, C, H, W
+        #y: N, S, E
+
+        embed = y.clone() #y has shape N, S, E turns to S, N, 
+        embed = y.permute(1, 0, 2)
+        first_token = embed[0, ...]
+        # queries = embed[1:self.n_query_channels + 1, ...]
+        y = self.regressor(first_token)
+
+        # normalize the bins
+        if self.norm == 'linear':
+            y = torch.relu(y)
+            eps = 0.1
+            y = y + eps
+        elif self.norm == 'softmax':
+            return torch.softmax(y, dim=1)
+        else:
+            y = torch.sigmoid(y)
+        y = y / y.sum(dim=1, keepdim=True)
+        return y
+
+        
 class adaptive_bins(nn.Module):
     def __init__(self, embedding_dim=512, dim_out=256, n_query_channels = 128, norm = 'linear'):
         super().__init__()

@@ -377,7 +377,8 @@ class MixVisionTransformer(nn.Module):
         x, embed = self.forward_features(x)
         # x = self.head(x)
 
-        return x, embed
+        # return x, embed
+        return x
 
 
 class DWConv(nn.Module):

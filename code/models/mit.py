@@ -328,14 +328,11 @@ class MixVisionTransformer(nn.Module):
     def forward_features(self, x):
         B = x.shape[0]
         outs = []
-        embedding_vectors = []
         # stage 1
         x, H, W = self.patch_embed1(x)
         for i, blk in enumerate(self.block1):
             x = blk(x, H, W)
         x = self.norm1(x)
-        # print("******* mit stage 1 x_norm1: ", x.shape)
-        embedding_vectors.append(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
@@ -344,8 +341,6 @@ class MixVisionTransformer(nn.Module):
         for i, blk in enumerate(self.block2):
             x = blk(x, H, W)
         x = self.norm2(x)
-        # print("******* mit stage 2 x_norm2: ", x.shape)
-        embedding_vectors.append(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
@@ -354,8 +349,6 @@ class MixVisionTransformer(nn.Module):
         for i, blk in enumerate(self.block3):
             x = blk(x, H, W)
         x = self.norm3(x)
-        # print("******* mit stage 3 x_norm3: ", x.shape)
-        embedding_vectors.append(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
@@ -365,19 +358,14 @@ class MixVisionTransformer(nn.Module):
             x = blk(x, H, W)
         x = self.norm4(x)
 
-        # embeding vector to calculate b
-        embedding_vectors.append(x)
-        # print("******* mit stage 4 x_norm4: ", x.shape)
+
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
-
-        return outs, embedding_vectors
+        return outs
 
     def forward(self, x):
-        x, embed = self.forward_features(x)
-        # x = self.head(x)
-
-        return x, embed
+        x = self.forward_features(x)
+        return x
 
 
 class DWConv(nn.Module):

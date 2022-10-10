@@ -13,7 +13,7 @@ class BaseOptions():
         parser.add_argument('--dataset',      type=str, default='kitti',
                             choices=['nyudepthv2', 'kitti', 'imagepath'])
         parser.add_argument('--exp_name',     type=str, default='test')
-        parser.add_argument('--batch_size',   type=int, default=3)
+        parser.add_argument('--batch_size',   type=int, default=4)
         parser.add_argument('--workers',      type=int, default=8)
         
         # depth configs

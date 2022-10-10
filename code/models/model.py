@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 
 from mmcv.runner import load_checkpoint
-from models.mit import mit_b4
+from .mit import mit_b4
+from .fusion import AFF, iAFF, DAF
+
 
 class GLPDepth(nn.Module):
     def __init__(self, max_depth=10.0, is_train=False):
@@ -54,9 +56,9 @@ class Decoder(nn.Module):
 
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         
-        self.fusion1 = SelectiveFeatureFusion(out_channels)
-        self.fusion2 = SelectiveFeatureFusion(out_channels)
-        self.fusion3 = SelectiveFeatureFusion(out_channels)
+        self.fusion1 = AFF(out_channels)
+        self.fusion2 = AFF(out_channels)
+        self.fusion3 = AFF(out_channels)
 
     def forward(self, x_1, x_2, x_3, x_4):
         x_4_ = self.bot_conv(x_4)

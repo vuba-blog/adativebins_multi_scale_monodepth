@@ -106,7 +106,14 @@ def train(train_loader, model, criterion_d, optimizer, device, epoch, args):
     depth_loss = logging.AverageMeter()
     half_epoch = args.epochs // 2
 
-    batches_in_epoch = 2019*4 #for kitti dataset defaut batches = 12, but current setting batch_size = 3 (01 RTX3060)
+    # batches_in_epoch = 2019*4 #for kitti dataset defaut batches = 12, but current setting batch_size = 3 (01 RTX3060)
+    batch_size = args.batch_size
+
+    if args.dataset == 'kitti':
+        batches_in_epoch = 23158 // batch_size
+    elif args.dataset == 'nyudepthv2':
+        batches_in_epoch = 24231 // batch_size
+
 
     for batch_idx, batch in enumerate(train_loader):      
         global_step += 1
@@ -119,6 +126,9 @@ def train(train_loader, model, criterion_d, optimizer, device, epoch, args):
                 current_lr = (3e-5 - 1e-4) * (global_step /
                                               batches_in_epoch/half_epoch - 1) ** 0.9 + 1e-4
             param_group['lr'] = current_lr
+
+
+
 
         input_RGB = batch['image'].to(device)
         depth_gt = batch['depth'].to(device)

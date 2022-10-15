@@ -10,7 +10,12 @@ from tensorboardX import SummaryWriter
 
 from models.model import GLPDepth
 import utils.metrics as metrics
-from utils.criterion import SiLogLoss
+# from utils.criterion import SiLogLoss
+# from utils.criterion import SILogLoss_ada
+# from utils.criterion import BinsChamferLoss
+from utils.criterion import Adabin_loss
+
+
 import utils.logging as logging
 
 from dataset.base_dataset import get_dataset
@@ -68,7 +73,11 @@ def main():
                                              pin_memory=True)
 
     # Training settings
-    criterion_d = SiLogLoss()
+    # criterion_d = SiLogLoss()
+
+    ###################################### losses ##############################################
+    total_loss = Adabin_loss()
+
     optimizer = optim.Adam(model.parameters(), args.lr)
 
     global global_step
@@ -77,12 +86,12 @@ def main():
     # Perform experiment
     for epoch in range(1, args.epochs + 1):
         print('\nEpoch: %03d - %03d' % (epoch, args.epochs))
-        loss_train = train(train_loader, model, criterion_d, optimizer=optimizer, 
+        loss_train = train(train_loader, model, total_loss, optimizer=optimizer, 
                            device=device, epoch=epoch, args=args)
         writer.add_scalar('Training loss', loss_train, epoch)
 
         if epoch % args.val_freq == 0:
-            results_dict, loss_val = validate(val_loader, model, criterion_d, 
+            results_dict, loss_val = validate(val_loader, model, total_loss, 
                                               device=device, epoch=epoch, args=args,
                                               log_dir=log_dir)
             writer.add_scalar('Val loss', loss_val, epoch)
@@ -133,10 +142,15 @@ def train(train_loader, model, criterion_d, optimizer, device, epoch, args):
         input_RGB = batch['image'].to(device)
         depth_gt = batch['depth'].to(device)
 
-        preds = model(input_RGB)
+        bin_edges, pred, out = model(input_RGB)
 
         optimizer.zero_grad()
-        loss_d = criterion_d(preds['pred_d'].squeeze(), depth_gt)
+        # loss_d = criterion_d(preds['pred_d'].squeeze(), depth_gt)
+        #use total_loss
+        valid_mask = depth_gt > 0
+
+        loss_d = criterion_d(bin_edges, pred, depth_gt, mask=valid_mask.to(torch.bool), interpolate=True)
+        # print("Online Loss: ", loss_d)
         depth_loss.update(loss_d.item(), input_RGB.size(0))
         loss_d.backward()
 
@@ -166,14 +180,17 @@ def validate(val_loader, model, criterion_d, device, epoch, args, log_dir):
         filename = batch['filename'][0]
 
         with torch.no_grad():
-            preds = model(input_RGB)
+            bin_edges, pred, out = model(input_RGB)
+        
+        valid_mask = depth_gt > 0
+        loss_d = criterion_d(bin_edges, pred, depth_gt, mask=valid_mask.to(torch.bool), interpolate=True)
 
-        pred_d = preds['pred_d'].squeeze()
-        depth_gt = depth_gt.squeeze()
 
-        loss_d = criterion_d(preds['pred_d'].squeeze(), depth_gt)
+        # loss_d = criterion_d(preds['pred_d'].squeeze(), depth_gt)
 
         depth_loss.update(loss_d.item(), input_RGB.size(0))
+        pred_d = pred.squeeze()
+        depth_gt = depth_gt.squeeze()
 
         pred_crop, gt_crop = metrics.cropping_img(args, pred_d, depth_gt)
         computed_result = metrics.eval_depth(pred_crop, gt_crop)
@@ -184,11 +201,11 @@ def validate(val_loader, model, criterion_d, device, epoch, args, log_dir):
 
         if args.save_result:
             if args.dataset == 'kitti':
-                pred_d_numpy = pred_d.cpu().numpy() * 256.0
+                pred_d_numpy = pred.cpu().numpy() * 256.0
                 cv2.imwrite(save_path, pred_d_numpy.astype(np.uint16),
                             [cv2.IMWRITE_PNG_COMPRESSION, 0])
             else:
-                pred_d_numpy = pred_d.cpu().numpy() * 1000.0
+                pred_d_numpy = pred.cpu().numpy() * 1000.0
                 cv2.imwrite(save_path, pred_d_numpy.astype(np.uint16),
                             [cv2.IMWRITE_PNG_COMPRESSION, 0])
 

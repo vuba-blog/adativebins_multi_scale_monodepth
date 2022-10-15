@@ -61,8 +61,8 @@ class GLPDepth(nn.Module):
 
         # out_depth = self.last_layer_depth(out)
         # out_depth = torch.sigmoid(out_depth) * self.max_depth
-
-        return {'pred_d': pred}
+        return centers.view(n, dout), pred, out
+        # return {'centers': centers, 'pred_d': pred, 'out': out}
 
 
 class Decoder(nn.Module):
@@ -132,15 +132,14 @@ class SelectiveFeatureFusion(nn.Module):
         self.conv3 = nn.Conv2d(in_channels=int(in_channel / 2), 
                                out_channels=2, kernel_size=3, stride=1, padding=1)
 
-        # self.sigmoid = nn.Sigmoid()
-        self.leakyrelu = nn.LeakyReLU()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x_local, x_global):
         x = torch.cat((x_local, x_global), dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        attn = self.leakyrelu(x)
+        attn = self.sigmoid(x)
 
         out = x_local * attn[:, 0, :, :].unsqueeze(1) + \
               x_global * attn[:, 1, :, :].unsqueeze(1)
